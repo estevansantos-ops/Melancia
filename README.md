@@ -115,6 +115,17 @@ javac Main.java
 java Main
 ```
 
+## Testes
+
+A suíte de testes está em [TestObserver.java](TestObserver.java) e valida o comportamento do Observer/IoC sem dependências externas (lambdas, method references, registro/remoção de observadores, estado do sensor no callback, e garantia de que `Cidade` não implementa `Observer`).
+
+```bash
+javac Main.java TestObserver.java
+java TestObserver
+```
+
+Saída esperada: `21 passou, 0 falhou`.
+
 ## Funcionamento
 
 Ao iniciar, o programa:
