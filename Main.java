@@ -1,8 +1,9 @@
 /**
  * Projeto Orientado a Objetos - Padrão de Projeto Observer
- * 
+ * (versão com Inversão de Controle via callbacks)
+ *
  * Sistema de coleta de dados ambientais da Amazônia
- * 
+ *
  * Sujeitos (Subjects): Sensores localizados na Amazônia
  *   - Coletam temperatura, pH e umidade do ar
  *
@@ -16,41 +17,47 @@
 
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.Scanner;
 
 /**
- * Classe Subject (implementação interna do padrão)
- * Todo sujeito deve herdar dessa classe.
- * Inclui métodos para adicionar, remover e notificar os observadores.
+ * Interface funcional Observer — representa o "contrato do callback".
+ *
+ * Por ser @FunctionalInterface (um único método abstrato), pode ser
+ * satisfeita por uma expressão lambda ou por uma referência a método
+ * (ex.: cidade::receberMedicao). Assim, a classe observadora NÃO
+ * precisa declarar "implements Observer" — basta fornecer uma função
+ * compatível com a assinatura update(T).
  */
-class Subject {
-
-    private List<Observer> observers = new ArrayList<Observer>();
-
-    public void addObserver(Observer observer) {
-        observers.add(observer);
-    }
-
-    public void removeObserver(Observer observer) {
-        observers.remove(observer);
-    }
-
-    public void notifyObservers() {
-        Iterator<Observer> it = observers.iterator();
-        while (it.hasNext()) {
-            Observer obs = it.next();
-            obs.update(this);
-        }
-    }
+@FunctionalInterface
+interface Observer<T> {
+    void update(T subject);
 }
 
 /**
- * Interface Observer (implementação interna do padrão)
- * Todo observador deve implementar essa interface.
+ * Classe Subject — guarda a lista de callbacks registrados e
+ * decide QUANDO invocá-los. Essa é a essência da Inversão de
+ * Controle (IoC): o observador não fica perguntando se algo mudou;
+ * ele registra uma função e é o sujeito quem a chama de volta.
+ *
+ * "Don't call us, we'll call you." (Princípio de Hollywood)
  */
-interface Observer {
-    public void update(Subject s);
+class Subject<T> {
+
+    private List<Observer<T>> observers = new ArrayList<Observer<T>>();
+
+    public void addObserver(Observer<T> observer) {
+        observers.add(observer);
+    }
+
+    public void removeObserver(Observer<T> observer) {
+        observers.remove(observer);
+    }
+
+    protected void notifyObservers(T self) {
+        for (Observer<T> obs : observers) {
+            obs.update(self); // callback: o Subject invoca a função registrada
+        }
+    }
 }
 
 /**
@@ -58,7 +65,7 @@ interface Observer {
  * Representa um sensor instalado na Amazônia que coleta
  * temperatura, pH e umidade do ar.
  */
-class Sensor extends Subject {
+class Sensor extends Subject<Sensor> {
 
     private String localizacao; // ex: "Manaus", "Belém", "Rio Branco"
     private double temperatura;
@@ -85,47 +92,40 @@ class Sensor extends Subject {
         return umidade;
     }
 
-    /**
-     * Atualiza as medições do sensor e notifica os observadores interessados.
-     */
     public void setMedicoes(double temperatura, double ph, double umidade) {
         this.temperatura = temperatura;
         this.ph = ph;
         this.umidade = umidade;
-        notifyObservers();
+        notifyObservers(this);
     }
 
-    /**
-     * Atualiza apenas a temperatura e notifica os observadores.
-     */
     public void setTemperatura(double temperatura) {
         this.temperatura = temperatura;
-        notifyObservers();
+        notifyObservers(this);
     }
 
-    /**
-     * Atualiza apenas o pH e notifica os observadores.
-     */
     public void setPh(double ph) {
         this.ph = ph;
-        notifyObservers();
+        notifyObservers(this);
     }
 
-    /**
-     * Atualiza apenas a umidade e notifica os observadores.
-     */
     public void setUmidade(double umidade) {
         this.umidade = umidade;
-        notifyObservers();
+        notifyObservers(this);
     }
 }
 
 /**
- * Cidade é um observador dos sensores da Amazônia.
- * Cada cidade recebe atualizações dos sensores que ela está
- * interessada em monitorar e imprime as informações coletadas.
+ * Cidade NÃO implementa Observer. Ela apenas expõe um método
+ * (receberMedicao) que pode ser usado como callback por qualquer
+ * sensor. Em Main o registro é feito via method reference:
+ *
+ *     sensor.addObserver(cidade::receberMedicao);
+ *
+ * A Cidade entrega uma função ao Sensor e fica passiva — quem
+ * decide quando ela será executada é o Sensor. Isso é a IoC.
  */
-class Cidade implements Observer {
+class Cidade {
 
     private String nome;
 
@@ -137,11 +137,7 @@ class Cidade implements Observer {
         return nome;
     }
 
-    /**
-     * Método chamado quando um sensor observado atualiza suas medições.
-     */
-    public void update(Subject s) {
-        Sensor sensor = (Sensor) s;
+    public void receberMedicao(Sensor sensor) {
         System.out.println("---------------------------------------------");
         System.out.println("Cidade " + nome + " recebeu dados do sensor de "
                 + sensor.getLocalizacao() + ":");
@@ -173,26 +169,29 @@ public class Main {
         Cidade sp  = new Cidade("SP");
         Cidade poa = new Cidade("POA");
 
-        // Cada cidade se registra nos sensores que deseja monitorar
+        // ========= REGISTRO DOS CALLBACKS (Inversão de Controle) =========
+        // Cada cidade registra o método receberMedicao como callback
+        // nos sensores que deseja monitorar. Nenhuma cidade implementa
+        // Observer — o acoplamento é feito apenas pela função.
 
         // BSB monitora todos os sensores
-        sensorManaus.addObserver(bsb);
-        sensorBelem.addObserver(bsb);
-        sensorRioBranco.addObserver(bsb);
+        sensorManaus.addObserver(bsb::receberMedicao);
+        sensorBelem.addObserver(bsb::receberMedicao);
+        sensorRioBranco.addObserver(bsb::receberMedicao);
 
         // RJ monitora Manaus e Belém
-        sensorManaus.addObserver(rj);
-        sensorBelem.addObserver(rj);
+        sensorManaus.addObserver(rj::receberMedicao);
+        sensorBelem.addObserver(rj::receberMedicao);
 
         // SJC monitora apenas Rio Branco
-        sensorRioBranco.addObserver(sjc);
+        sensorRioBranco.addObserver(sjc::receberMedicao);
 
         // SP monitora Manaus e Rio Branco
-        sensorManaus.addObserver(sp);
-        sensorRioBranco.addObserver(sp);
+        sensorManaus.addObserver(sp::receberMedicao);
+        sensorRioBranco.addObserver(sp::receberMedicao);
 
         // POA monitora apenas Belém
-        sensorBelem.addObserver(poa);
+        sensorBelem.addObserver(poa::receberMedicao);
 
         // ========= EXECUÇÃO INICIAL =========
 
@@ -279,7 +278,7 @@ public class Main {
                 continue;
             }
 
-            // Aplica o novo valor e dispara update (notifyObservers)
+            // Aplica o novo valor e dispara os callbacks (notifyObservers)
             System.out.println("\n=============================================");
             System.out.println("Sensor de " + sensorSelecionado.getLocalizacao()
                     + " atualizando parâmetro...");
